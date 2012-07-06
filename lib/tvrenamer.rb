@@ -1,12 +1,15 @@
 require 'fileutils'
+require 'ostruct'
 
 class Renamer
-  attr_accessor :path, :syntax, :recursive
+  attr_accessor :path, :syntax, :recursive, :preview, :fetch_tvdb
   
   def initialize(path=".")
     @recursive = true
+    @dest_path = ''
     @path = File.expand_path(path)
-    @api = Tvdb.new
+    @fetch_tvdb = true
+    @api = Tvdb.new 
   end
   
   def start
@@ -29,11 +32,9 @@ class Renamer
   end
   
   def process_file(file)
-    series, season, number = *TVParser.parse(file)
-    
-    episode = get_episode(series, season, number)
-    series = get_series(series)
-    
+
+    series, episode = get_show_info(file)
+
     unless episode.nil? || episode.season_number == 0
 
       if self.syntax.nil?
@@ -42,6 +43,7 @@ class Renamer
 
       new_name = self.syntax \
         .gsub("%S",series.name) \
+        .gsub("%XS",series.name.gsub(/\s/, '.')) \
         .gsub("%0s",episode.season_number.to_s.rjust(2,'0')) \
         .gsub("%s",episode.season_number.to_s) \
         .gsub("%0e",episode.number.to_s.rjust(2,'0')) \
@@ -52,11 +54,11 @@ class Renamer
       
       unless file == new_name
         puts "#{file} -> #{new_name}"
-        FileUtils.mv file, new_name
+        FileUtils.mv file, new_name unless preview
       end
     end
   end
-  
+
   def process_cwd
     Dir.entries('.').each do |entry|
       unless entry =~ /^\./
@@ -67,6 +69,20 @@ class Renamer
         end
       end
     end
+  end
+
+  def get_show_info(file)
+    parsed_series, parsed_season, parsed_number = *TVParser.parse(file)
+    
+    if fetch_tvdb
+      episode = get_episode(parsed_series, parsed_season, parsed_number)
+      series = get_series(series)
+    else
+      episode = OpenStruct.new(:season_number => parsed_season, :number => parsed_number, :name => '')
+      series = OpenStruct.new(:name => parsed_series)
+    end
+
+    [series, episode]
   end
   
   def get_episode(series, season, number)
