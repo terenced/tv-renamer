@@ -2,22 +2,27 @@ require 'fileutils'
 require 'ostruct'
 
 class Renamer
-  attr_accessor :path, :syntax, :recursive, :preview, :fetch_tvdb
+  attr_accessor :src_path, :destination_path, :syntax, :recursive, :preview, :fetch_tvdb
   
   def initialize(path=".")
     @recursive = true
-    @dest_path = ''
-    @path = File.expand_path(path)
+    @destination_path = ''
+    @src_path = File.expand_path(path)
     @fetch_tvdb = true
     @api = Tvdb.new 
   end
-  
+
+  def destination_path=(path)
+    throw :directory_does_not_exist unless File.directory?(path) || path.empty?
+    @destination_path = path
+  end
+
   def start
     process
   end
   
   private
-  def process(path=@path)
+  def process(path=@src_path)
     abort("Path '#{path}' does not exist") unless File.exists? path
     
     if File.directory? path      
@@ -54,7 +59,10 @@ class Renamer
       
       unless file == new_name
         puts "#{file} -> #{new_name}"
-        FileUtils.mv file, new_name unless preview
+        unless preview
+          path = build_destination_path(series, episode)
+          FileUtils.mv file, path.empty? ? new_name : File.join(path, new_name)  
+        end
       end
     end
   end
@@ -71,9 +79,20 @@ class Renamer
     end
   end
 
-  def get_show_info(file)
-    parsed_series, parsed_season, parsed_number = *TVParser.parse(file)
+  def build_destination_path(series, episode)
+    return '' if destination_path.empty?
     
+    series_dir_path = File.join(destination_path, series.name)
+    Dir.mkdir(series_dir_path) unless File.directory?(series_dir_path)
+    season_dir_path = File.join(series_dir_path, "Season #{episode.season_number.to_s.rjust(2,'0')}")
+    Dir.mkdir(season_dir_path) unless File.directory?(season_dir_path)
+
+    season_dir_path
+  end
+
+  def get_show_info(file)
+
+    parsed_series, parsed_season, parsed_number = *TVParser.parse(file)
     if fetch_tvdb
       episode = get_episode(parsed_series, parsed_season, parsed_number)
       series = get_series(series)
